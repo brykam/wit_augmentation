@@ -1,0 +1,10 @@
+{
+    "editor.tokenColorCustomizations": {
+        "comments": "",
+        "textMateRules": []
+    },
+    "files.exclude": {
+        "**/mlenv": true,
+        "**/pap-smear2005": true
+    }
+}
