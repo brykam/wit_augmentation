@@ -9,17 +9,20 @@ from helpers import *
 
 def get_model(name='vgg16', width=128, height=128):
     if name == 'vgg16':
-        base_model = keras.applications.VGG16(input_shape=(width, height, 3),
+        base_model = keras.applications.VGG16(
+                                        input_shape=(width, height, 3),
                                         include_top=False,
                                         weights="imagenet"
                                         )
     elif name == 'vgg19':
-        base_model = keras.applications.VGG19(input_shape=(width, height, 3),
+        base_model = keras.applications.VGG19(
+                                        input_shape=(width, height, 3),
                                         include_top=False,
                                         weights="imagenet"
                                         )
     elif name == 'inception':
-        base_model = keras.applications.InceptionResNetV2(input_shape=(width, height, 3),
+        base_model = keras.applications.InceptionResNetV2(
+                                        input_shape=(width, height, 3),
                                         include_top=False,
                                         weights="imagenet"
                                         )
@@ -79,15 +82,15 @@ def save_plots(filename, histories):
 
     plt.savefig(filename)
 
-def augment_dataset(X, y, mode='raw', amount=500):
+def augment_dataset(X, y, mode='raw', amount=500, masks=None):
     if mode == 'raw':
         return X, y
     elif mode == 'copy':
         print("Data copy augmentation selected.")
         return augmentation_by_copy(X, y, amount)
-    elif mode == 'perlin':
+    elif mode == 'perlin' and masks is not None:
         print("Perlin augmentation selected.")
-        return augmentation_by_perlin(X, y, amount)
+        return augmentation_by_perlin(X, y, masks, amount)
     elif mode == 'gan':
         # TODO: Generative adversarial network augmentation
         pass
@@ -97,34 +100,39 @@ def augment_dataset(X, y, mode='raw', amount=500):
     else:
         return X, y
 
+def normalize_set(X, y, width=128, height=128):
+    y = np.asarray(y)
+    for i, image in enumerate(X):
+        X[i] = cv2.resize(image, (height, width))
+    
+    X = np.asarray(X)    
+    X = X / 255.
+    return X, y
 
-
-def train_model(X, y,
+def train_model(X, y, masks,
                 model_name='vgg16', augmentation='raw',     
                 k_folds=10,
                 batches=15,
                 epochs=100,
-                split_ratio=0.8):
-    height = 128
-    width = 128
+                split_ratio=0.8, 
+                height = 128,
+                width = 128):
+
     directory = f"results/{model_name}/"
 
-    X_full, y_full = augment_dataset(X, y, mode=augmentation)
-    print("New size after augmentation: ", len(X_full))
-    X_full, y_full = shuffle_dataset(X_full, y_full)
+    X_shuff, y_shuff, masks = shuffle_dataset(X, y, masks)
 
-    list(X_full)
-    y_full = np.asarray(y_full)
-     
-    for i, image in enumerate(X_full):
-        X_full[i] = cv2.resize(image, (height, width))
+    i_split = int(np.ceil(split_ratio*len(X_shuff)))
+    print("split index is: ", i_split)
 
-    X_full = np.asarray(X_full)
-    X_full = X_full / 255.
-    i_split = int(np.ceil(ratio*len(X_full)))
-    X_train_valid, X_test = X_full[:i_split], X_full[i_split:]
-    y_train_valid, y_test = y_full[:i_split], y_full[i_split:]
+    X_train_valid, X_test = X_shuff[:i_split], X_shuff[i_split:]
+    y_train_valid, y_test = y_shuff[:i_split], y_shuff[i_split:]
+    masks_train_valid = masks[:i_split]
+    # preparation of the test set (20%)
+    X_test, y_test = normalize_set(X_test, y_test, width, height)
+    # augmentation moved into k-fold crossvalidation splitting
 
+  
     # k-fold crossvalidation:
     # https://www.machinecurve.com/index.php/2020/02/18/how-to-use-k-fold-cross-validation-with-keras/
     kfold = KFold(n_splits=k_folds, shuffle=True)
@@ -133,16 +141,30 @@ def train_model(X, y,
     loss_per_fold = []
     histories = []
     fold_no = 1
-    print(f'Training {augmentation}-enhanced set with {len(X_full)} samples.')
+    # print(f'Training {augmentation}-enhanced set with {len(X_full)} samples.')
     for train, valid in kfold.split(X_train_valid, y_train_valid): 
+        # train and and valid are indices
+        print("train is ", type(train))
+        print("valid is ", type(valid))
+        X_train = [X_train_valid[t] for t in train]
+        y_train = [y_train_valid[t] for t in train]
+        masks_train = [masks_train_valid[t] for t in train]
+        X_aug, y_aug = augment_dataset(X_train, y_train, mode=augmentation, masks=masks_train)
+        X_aug, y_aug = normalize_set(X_aug, y_aug, width, height)
+
+        y_valid = [y_train_valid[v] for v in valid]
+        X_valid = [X_train_valid[v] for v in valid]
+        X_valid, y_valid = normalize_set(X_valid, y_valid, width, height)
+        
+
         model = get_model(model_name)
         model.compile(optimizer = 'adam',
                     loss = 'sparse_categorical_crossentropy',
                     metrics = ['accuracy'])
         print('------------------------------------------------------------------------')
         print(f'Training for fold {fold_no} ...')
-        history = model.fit(X_train_valid[train], y_train_valid[train],
-                    validation_data=(X_train_valid[valid], y_train_valid[valid]),
+        history = model.fit(X_aug, y_aug,
+                    validation_data=(X_valid, y_valid),
                     epochs=epochs,
                     batch_size=batches,
                     verbose=1)
@@ -170,19 +192,21 @@ if __name__ == "__main__":
     ratio = 0.8
     
     model_names = ['vgg16', 'vgg19', 'inception']
-    augmentation_type = "raw"
-    k_folds = 10
-    batches = 15
+    augmentation_types = ['raw', 'copy', 'perlin']
+    k_folds = 8
+    batches = 50
     epochs = 100
     X_full, y_full = get_smear_set()
+    masks = get_mask_set()
 
-    for model_name in model_names:
-        train_model(X=X_full, y=y_full,
-                    model_name=model_name, augmentation=augmentation_type,
-                    k_folds=k_folds,
-                    batches=batches,
-                    epochs=epochs,
-                    split_ratio=ratio)
+    for aug_type in augmentation_types:
+        for model_name in model_names:
+            train_model(X=X_full, y=y_full, masks=masks,
+                        model_name=model_name, augmentation=aug_type,
+                        k_folds=k_folds,
+                        batches=batches,
+                        epochs=epochs,
+                        split_ratio=ratio)
 
     
     
