@@ -2,9 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 from keras.layers import Dense, Activation, Flatten, Input, Dropout, GlobalAveragePooling2D
+from numpy.lib.shape_base import split
 from tensorflow import keras
 import tensorflow as tf
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split, StratifiedShuffleSplit
 from helpers import *
 
 def get_model(name='vgg16', width=128, height=128):
@@ -122,20 +123,39 @@ def train_model(X, y, masks,
 
     X_shuff, y_shuff, masks = shuffle_dataset(X, y, masks)
 
-    i_split = int(np.ceil(split_ratio*len(X_shuff)))
-    print("split index is: ", i_split)
 
-    X_train_valid, X_test = X_shuff[:i_split], X_shuff[i_split:]
-    y_train_valid, y_test = y_shuff[:i_split], y_shuff[i_split:]
-    masks_train_valid = masks[:i_split]
+    # i_split = int(np.ceil(split_ratio*len(X_shuff)))
+    # print("split index is: ", i_split)
+
+    sss = StratifiedShuffleSplit(n_splits=1, train_size=split_ratio)
+    indices = list(sss.split(X_shuff, y_shuff))
+    train, test = indices[0]
+    # print("indices: ", len(indices), indices)
+
+    X_train_valid = [X_shuff[t] for t in train]
+    y_train_valid = [y_shuff[t] for t in train]
+    masks_train_valid = [masks[t] for t in train]
+
+    X_test = [X_shuff[t] for t in test]
+    y_test = [y_shuff[t] for t in test]
+
+    # X_train_valid, X_test, y_train_valid, y_test = train_test_split(
+                # X_shuff, y_shuff, train_size=split_ratio, stratify=y_shuff)
+
+    # X_train_valid, X_test = X_shuff[:i_split], X_shuff[i_split:]
+    # y_train_valid, y_test = y_shuff[:i_split], y_shuff[i_split:]
+    # masks_train_valid = masks[:i_split]
     # preparation of the test set (20%)
+    
+    
     X_test, y_test = normalize_set(X_test, y_test, width, height)
     # augmentation moved into k-fold crossvalidation splitting
 
-  
+    
     # k-fold crossvalidation:
     # https://www.machinecurve.com/index.php/2020/02/18/how-to-use-k-fold-cross-validation-with-keras/
-    kfold = KFold(n_splits=k_folds, shuffle=True)
+    # kfold = KFold(n_splits=k_folds, shuffle=True)
+    kfold = StratifiedKFold(n_splits=k_folds, shuffle=True)
 
     acc_per_fold = []
     loss_per_fold = []
@@ -194,8 +214,8 @@ if __name__ == "__main__":
     model_names = ['vgg16', 'vgg19', 'inception']
     augmentation_types = ['raw', 'copy', 'perlin']
     k_folds = 8
-    batches = 50
-    epochs = 100
+    batches = 10
+    epochs = 20
     X_full, y_full = get_smear_set()
     masks = get_mask_set()
 
