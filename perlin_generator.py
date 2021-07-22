@@ -4,6 +4,7 @@ import cv2
 import time
 import noise
 
+SENTINEL = 'DONE'
 
 def generate_perlin_noise(image):
     shape = image.shape
@@ -49,7 +50,7 @@ def add_perlin_noise(image, mask):
 def process_data(thd, q, results):
     while True:
         data = q.get()
-        if data == 'DONE':
+        if data == SENTINEL:
             break
         # print(f"{thd.name} is processing image {data[0]}")
         result = add_perlin_noise(data[1], data[2])
@@ -89,7 +90,8 @@ class PerlinGenerator:
     def create_processes(self):
         for _ in range(self.no_cpus):
             proc = NoiseAdder(
-                self.process_id, f"Process-{self.process_id}", self.work_queue, self.results)
+                self.process_id, f"Process-{self.process_id}", 
+                self.work_queue, self.results)
             proc.start()
             self.processes.append(proc)
             self.process_id += 1
@@ -98,7 +100,7 @@ class PerlinGenerator:
         for i, image in enumerate(self.images):
             self.work_queue.put([self.labels[i], image, self.masks[i]])
         for _ in range(len(self.processes)):
-            self.work_queue.put('DONE')
+            self.work_queue.put(SENTINEL)
 
     def augment_set(self):
         print('Starting perlin noise addition procedure')

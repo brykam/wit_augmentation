@@ -1,10 +1,12 @@
 import random
-import os, glob
+import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 
 import cv2
 from perlin_generator import PerlinGenerator
+
 
 def get_image_lists():
     walk_dir = os.path.join(os.getcwd(), 'pap-smear2005')
@@ -20,10 +22,12 @@ def get_image_lists():
             abnormal_cells.append(filename)
     return normal_cells, abnormal_cells
 
+
 def load_image(filename):
     image = cv2.imread(filename)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return image
+
 
 def shuffle_dataset(X, y, masks=None):
     if masks is None:
@@ -57,7 +61,8 @@ def get_smear_set(with_labels=False):
             images.append(load_image(filename))
             labels.append(filename.split('/')[-2])
     labels = np.array(labels).reshape(-1, 1)
-    return images, labels #, onehot_encoder.categories_
+    return images, labels  # , onehot_encoder.categories_
+
 
 def augmentation_by_copy(X, y, amount=500):
     if amount > len(X):
@@ -68,12 +73,14 @@ def augmentation_by_copy(X, y, amount=500):
     y_aug = y + y_copy[:amount]
     return X_aug, y_aug
 
+
 def augmentation_by_perlin(X, y, masks, amount=500):
     if amount > len(X):
         amount = len(X) - 1
     pg = PerlinGenerator(X, y, masks)
     X_aug, y_aug = pg.get_augmented_set(amount)
     return X_aug, y_aug
+
 
 def get_mask_set():
     normal_file_cells, abnormal_cells = get_image_lists()
@@ -84,6 +91,7 @@ def get_mask_set():
         images.append(load_image(filename[:-4] + '-d.bmp'))
     images = np.array(images)
     return images
+
 
 if __name__ == '__main__':
     images, labels = get_smear_set()
